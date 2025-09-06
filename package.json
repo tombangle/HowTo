@@ -9,7 +9,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "npx expo export --platform web"
+    "build:web": "expo export --platform web",
+    "fix:public": "node scripts/fix-public-path.js",
+    "deploy:pages": "gh-pages -d dist",
+    "deploy:docs": "rm -rf docs && mkdir docs && cp -R dist/* docs && git add docs && git commit -m \"Deploy to docs\" && git push"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
