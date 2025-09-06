@@ -8,6 +8,9 @@
     "scheme": "intuitive-flexible-pwa",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
+
+    "platforms": ["ios", "android", "web"],
+
     "ios": {
       "supportsTablet": true
     },
@@ -37,6 +40,7 @@
     ],
     "experiments": {
       "typedRoutes": true
+        , "baseUrl": "/HowTo"
     },
     "runtimeVersion": {
       "policy": "sdkVersion"
