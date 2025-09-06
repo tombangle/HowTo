@@ -1,11 +1,18 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "jsx": "react-jsx",                 // 👈 required for .tsx / JSX
     "strict": true,
+    "moduleResolution": "Bundler",      // recommended for RN/Expo + TS 5
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "allowJs": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "types": ["react", "react-native"],
+    "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
