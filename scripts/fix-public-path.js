@@ -3,48 +3,44 @@
 
 const fs = require('fs');
 const path = require('path');
-
 const DIST = path.join(__dirname, '..', 'dist');
 
-function walk(dir) {
-  const out = [];
-  for (const entry of fs.readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const stat = fs.statSync(full);
-    if (stat.isDirectory()) out.push(...walk(full));
-    else out.push(full);
-  }
-  return out;
+function walk(d){ return fs.readdirSync(d).flatMap(e=>{
+  const p = path.join(d,e); const s = fs.statSync(p);
+  return s.isDirectory()? walk(p) : [p];
+});}
+
+function rewriteOnce(s){
+  // Prefix absolute /_expo/... with /HowTo/ if not already
+  s = s.replace(/(["'(])\/(?!HowTo\/)_expo\//g, '$1/HowTo/_expo/');
+
+  // HTML attrs: href/src/content → add /HowTo if path is absolute and not already prefixed
+  s = s.replace(/\bhref="\/(?!HowTo\/)/g, 'href="/HowTo/');
+  s = s.replace(/\bsrc="\/(?!HowTo\/)/g,  'src="/HowTo/');
+  s = s.replace(/\bcontent="\/(?!HowTo\/)/g, 'content="/HowTo/');
+
+  // CSS url(/_expo/...) → prefix
+  s = s.replace(/url\(\s*\/(?!HowTo\/)_expo\//g, 'url(/HowTo/_expo/');
+
+  // modulepreload hrefs
+  s = s.replace(/\brel="modulepreload"\s+href="\/(?!HowTo\/)/g, 'rel="modulepreload" href="/HowTo/');
+
+  // Safety: collapse accidental doubles
+  s = s.replace(/\/HowTo\/HowTo\//g, '/HowTo/');
+  return s;
 }
 
-function rewriteFile(file) {
-  let s = fs.readFileSync(file, 'utf8');
+if (!fs.existsSync(DIST)) { console.error('dist/ missing'); process.exit(1); }
 
-  // Core replacements:
-  // 1) Any quoted absolute _expo URL → "/HowTo/_expo/..."
-  s = s.replace(/(["'(])\/_expo\//g, '$1/HowTo/_expo/');
-
-  // 2) Generic absolute refs in HTML attributes → add /HowTo prefix
-  s = s.replace(/href="\//g, 'href="/HowTo/');
-  s = s.replace(/src="\//g,  'src="/HowTo/');
-  s = s.replace(/content="\//g, 'content="/HowTo/');
-
-  // 3) CSS url(/_expo/...) → url(/HowTo/_expo/...)
-  s = s.replace(/url\(\s*\/_expo\//g, 'url(/HowTo/_expo/');
-
-  fs.writeFileSync(file, s);
-  console.log('Rewrote:', path.relative(DIST, file));
-}
-
-if (!fs.existsSync(DIST)) {
-  console.error('dist/ not found. Run `npx expo export --platform web` first.');
-  process.exit(1);
-}
-
-const files = walk(DIST).filter(f =>
-  /\.(html|json|js|css|map)$/i.test(f) // include manifest.json, chunks, css
-);
-
-files.forEach(rewriteFile);
+walk(DIST)
+  .filter(f => /\.(html|js|css|json|map)$/i.test(f))
+  .forEach(f => {
+    const o = fs.readFileSync(f, 'utf8');
+    const n = rewriteOnce(o);
+    if (n !== o) {
+      fs.writeFileSync(f, n);
+      console.log('Rewrote:', path.relative(DIST, f));
+    }
+  });
 
 console.log('✅ Public path rewrite complete.');
