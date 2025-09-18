@@ -1,11 +1,8 @@
+// hooks/useDecisionTrees.ts
 import { useState, useEffect, useCallback } from 'react';
-// ⬇️ Make sure this path matches your project!
-//   If the file is at app/lib/supabase.ts, keep '@/app/lib/supabase'.
-//   If it's at lib/supabase.ts (root-level), use '@/lib/supabase'.
 import { supabase } from '@/app/lib/supabase';
 import { DecisionTree } from '../types/DecisionTree';
 
-// This should mirror your actual table columns in Supabase.
 type DBDecisionTree = {
   id: string;
   title: string;
@@ -13,8 +10,7 @@ type DBDecisionTree = {
   icon: string | null;
   nodes: any[] | null;          // jsonb
   root_node_id: string | null;  // uuid/text
-  created_at: string;           // timestamp string
-  // ⚠️ Remove "tree_data" unless you actually created that column.
+  created_at: string;           // timestamptz string
 };
 
 export const useDecisionTrees = () => {
@@ -40,7 +36,7 @@ export const useDecisionTrees = () => {
 
     if (error) {
       console.error('Error fetching trees:', error);
-      setTrees([]); // avoid stale UI
+      setTrees([]);
     } else {
       setTrees((data ?? []).map(mapRow));
     }
@@ -49,14 +45,12 @@ export const useDecisionTrees = () => {
 
   const createTree = useCallback(
     async (tree: Omit<DecisionTree, 'id' | 'createdAt'>) => {
-      // Build an insert object WITHOUT undefined keys
       const insert: Partial<DBDecisionTree> = {
         title: tree.title,
         description: tree.description ?? '',
         icon: tree.icon ?? '🌳',
         nodes: tree.nodes ?? [],
         root_node_id: tree.rootNodeId ?? null,
-        // Do NOT send created_at; let DB default (now()) handle it
       };
 
       const { data, error } = await supabase
@@ -71,7 +65,7 @@ export const useDecisionTrees = () => {
       }
 
       const newTree = mapRow(data!);
-      setTrees(prev => [newTree, ...prev]);
+      setTrees((prev) => [newTree, ...prev]);
       return newTree;
     },
     []
@@ -79,7 +73,6 @@ export const useDecisionTrees = () => {
 
   const updateTree = useCallback(
     async (id: string, updates: Partial<DecisionTree>) => {
-      // Only include fields that were actually provided
       const patch: Partial<DBDecisionTree> = {};
       if (updates.title !== undefined) patch.title = updates.title;
       if (updates.description !== undefined) patch.description = updates.description;
@@ -87,17 +80,13 @@ export const useDecisionTrees = () => {
       if (updates.nodes !== undefined) patch.nodes = updates.nodes;
       if (updates.rootNodeId !== undefined) patch.root_node_id = updates.rootNodeId;
 
-      const { error } = await supabase
-        .from('decision_trees')
-        .update(patch)
-        .eq('id', id);
-
+      const { error } = await supabase.from('decision_trees').update(patch).eq('id', id);
       if (error) {
         console.error('Error updating tree:', error);
         throw error;
       }
 
-      setTrees(prev => prev.map(t => (t.id === id ? { ...t, ...updates } as DecisionTree : t)));
+      setTrees((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } as DecisionTree : t)));
     },
     []
   );
@@ -105,18 +94,13 @@ export const useDecisionTrees = () => {
   const deleteTree = useCallback(
     async (id: string) => {
       const before = trees;
-      setTrees(prev => prev.filter(t => t.id !== id)); // optimistic
-
+      setTrees((prev) => prev.filter((t) => t.id !== id)); // optimistic
       const { error } = await supabase.from('decision_trees').delete().eq('id', id);
-
       if (error) {
         console.error('Error deleting tree:', error);
         setTrees(before); // rollback
         throw error;
       }
-
-      // optional: trust optimistic delete or refetch for consistency
-      // await fetchTrees();
     },
     [trees]
   );
