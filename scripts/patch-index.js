@@ -16,7 +16,7 @@ if (!entry) {
 const html = `<!DOCTYPE html><html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Decision Tree App</title><meta name="theme-color" content="#ffffff"/>
-<script type="module">globalThis.__EXPO_ROUTER_HYDRATE__=true;</script>
+<script type="module">globalThis.__EXPO_ROUTER_HYDRATE__=false;</script>
 </head><body><div id="root"></div>
 <!-- Use RELATIVE path so it works when served from /HowTo/ -->
 <script src="./_expo/static/js/web/${entry}" defer></script>
