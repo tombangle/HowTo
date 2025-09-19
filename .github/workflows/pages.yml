@@ -29,10 +29,6 @@ jobs:
       - name: Export web build
         run: npm run export:web
 
-      - name: Prefix asset paths for GitHub Pages subpath /HowTo/
-        run: |
-          sed -i 's|href="/|href="/HowTo/|g; s|src="/|src="/HowTo/|g; s|content="/|content="/HowTo/|g; s|(/_expo/|(/HowTo/_expo/|g' dist/index.html dist/404.html
-
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v3
         with:

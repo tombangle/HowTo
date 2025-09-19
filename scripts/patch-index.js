@@ -18,7 +18,8 @@ const html = `<!DOCTYPE html><html lang="en"><head>
 <title>Decision Tree App</title><meta name="theme-color" content="#ffffff"/>
 <script type="module">globalThis.__EXPO_ROUTER_HYDRATE__=true;</script>
 </head><body><div id="root"></div>
-<script src="/_expo/static/js/web/${entry}" defer></script>
+<!-- Use RELATIVE path so it works when served from /HowTo/ -->
+<script src="./_expo/static/js/web/${entry}" defer></script>
 </body></html>`;
 
 fs.writeFileSync(path.join('dist', 'index.html'), html);
