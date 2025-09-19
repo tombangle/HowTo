@@ -1,5 +1,5 @@
 {
-  "name": "reactnative_expo_nativewind",
+  "name": "decision-tree-app",
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
@@ -12,6 +12,7 @@
     "build:web": "expo export --platform web",
     "fix:public": "node scripts/fix-public-path.js",
     "deploy:pages": "gh-pages -d dist",
+    "deploy:web": "bash scripts/deploy-web.sh",
     "deploy:docs": "rm -rf docs && mkdir docs && cp -R dist/* docs && git add docs && git commit -m \"Deploy to docs\" && git push"
   },
   "dependencies": {
@@ -65,6 +66,7 @@
     "ajv": "8.12.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "react-test-renderer": "^19.0.0"
+    "react-test-renderer": "^19.0.0",
+    "image-size": "1.0.2"
   }
 }
