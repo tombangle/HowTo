@@ -13,7 +13,9 @@
     "fix:public": "node scripts/fix-public-path.js",
     "deploy:pages": "gh-pages -d dist",
     "deploy:web": "bash scripts/deploy-web.sh",
-    "deploy:docs": "rm -rf docs && mkdir docs && cp -R dist/* docs && git add docs && git commit -m \"Deploy to docs\" && git push"
+    "deploy:docs": "rm -rf docs && mkdir docs && cp -R dist/* docs && git add docs && git commit -m \"Deploy to docs\" && git push",
+    "export:web": "expo export --platform web --output-dir dist",
+    "postexport:web": "node scripts/patch-index.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
