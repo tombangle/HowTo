@@ -1,8 +1,8 @@
-// hooks/useDecisionTrees.ts
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { DecisionTree } from '../types/DecisionTree';
 
+// Mirrors your DB columns
 type DBDecisionTree = {
   id: string;
   title: string;
@@ -10,7 +10,7 @@ type DBDecisionTree = {
   icon: string | null;
   nodes: any[] | null;          // jsonb
   root_node_id: string | null;  // uuid/text
-  created_at: string;           // timestamptz string
+  created_at: string;           // timestamptz
 };
 
 export const useDecisionTrees = () => {
@@ -29,10 +29,12 @@ export const useDecisionTrees = () => {
 
   const fetchTrees = useCallback(async () => {
     setLoading(true);
+
     const { data, error } = await supabase
       .from('decision_trees')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .returns<DBDecisionTree[]>();        // 👈 type the result here
 
     if (error) {
       console.error('Error fetching trees:', error);
@@ -45,7 +47,8 @@ export const useDecisionTrees = () => {
 
   const createTree = useCallback(
     async (tree: Omit<DecisionTree, 'id' | 'createdAt'>) => {
-      const insert: Partial<DBDecisionTree> = {
+      // Insert shape: no id/created_at
+      const insert: Omit<DBDecisionTree, 'id' | 'created_at'> = {
         title: tree.title,
         description: tree.description ?? '',
         icon: tree.icon ?? '🌳',
@@ -57,7 +60,12 @@ export const useDecisionTrees = () => {
         .from('decision_trees')
         .insert(insert)
         .select('*')
-        .single<DBDecisionTree>();
+        .single()                           // single row
+        .then((res) => {
+          // Give TS the row type
+          if ('data' in res) (res as any).data as DBDecisionTree;
+          return res as { data: DBDecisionTree | null; error: any };
+        });
 
       if (error) {
         console.error('Error creating tree:', error);
@@ -65,7 +73,7 @@ export const useDecisionTrees = () => {
       }
 
       const newTree = mapRow(data!);
-      setTrees((prev) => [newTree, ...prev]);
+      setTrees(prev => [newTree, ...prev]);
       return newTree;
     },
     []
@@ -80,13 +88,21 @@ export const useDecisionTrees = () => {
       if (updates.nodes !== undefined) patch.nodes = updates.nodes;
       if (updates.rootNodeId !== undefined) patch.root_node_id = updates.rootNodeId;
 
-      const { error } = await supabase.from('decision_trees').update(patch).eq('id', id);
+      if (Object.keys(patch).length === 0) return;
+
+      const { error } = await supabase
+        .from('decision_trees')
+        .update(patch)
+        .eq('id', id);
+
       if (error) {
         console.error('Error updating tree:', error);
         throw error;
       }
 
-      setTrees((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } as DecisionTree : t)));
+      setTrees(prev =>
+        prev.map(t => (t.id === id ? { ...t, ...updates } as DecisionTree : t))
+      );
     },
     []
   );
@@ -94,8 +110,13 @@ export const useDecisionTrees = () => {
   const deleteTree = useCallback(
     async (id: string) => {
       const before = trees;
-      setTrees((prev) => prev.filter((t) => t.id !== id)); // optimistic
-      const { error } = await supabase.from('decision_trees').delete().eq('id', id);
+      setTrees(prev => prev.filter(t => t.id !== id)); // optimistic
+
+      const { error } = await supabase
+        .from('decision_trees')
+        .delete()
+        .eq('id', id);
+
       if (error) {
         console.error('Error deleting tree:', error);
         setTrees(before); // rollback
