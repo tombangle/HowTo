@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
 import { DecisionTree } from '../types/DecisionTree';
 
 // Mirrors your DB columns
@@ -61,7 +61,7 @@ export const useDecisionTrees = () => {
         .insert(insert)
         .select('*')
         .single()                           // single row
-        .then((res) => {
+        .then((res: any) => {
           // Give TS the row type
           if ('data' in res) (res as any).data as DBDecisionTree;
           return res as { data: DBDecisionTree | null; error: any };

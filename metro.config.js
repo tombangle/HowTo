@@ -1,8 +1,9 @@
 const { getDefaultConfig } = require('@expo/metro-config');
 const config = getDefaultConfig(__dirname);
 
-config.resolver.assetExts = Array.from(
-  new Set([...config.resolver.assetExts, 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
-);
+// Add svg to assetExts (expo-image handles it as an asset by default)
+if (!config.resolver.assetExts.includes('svg')) {
+  config.resolver.assetExts.push('svg');
+}
 
 module.exports = config;

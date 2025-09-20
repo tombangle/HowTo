@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { DecisionTree, TreeNode, TreeState, Choice, Condition } from '../types/DecisionTree';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
 
 interface TreePlayerProps {
   treeId: string;

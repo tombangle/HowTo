@@ -7,13 +7,8 @@
     "icon": "./assets/images/icon.png",
     "scheme": "intuitive-flexible-pwa",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
-
     "platforms": ["ios", "android", "web"],
-
-    "ios": {
-      "supportsTablet": true
-    },
+    "ios": { "supportsTablet": true },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -23,27 +18,18 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
-      
+      "output": "single",
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ]
+      ["expo-splash-screen", {
+        "image": "./assets/images/splash-icon.png",
+        "imageWidth": 200,
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      }]
     ],
-    "experiments": {
-      "typedRoutes": true
-        , "baseUrl": "/HowTo"
-    },
-    "runtimeVersion": {
-      "policy": "sdkVersion"
-    }
+    "experiments": { "typedRoutes": false, "reactCompiler": false },
+    "runtimeVersion": { "policy": "sdkVersion" }
   }
 }
