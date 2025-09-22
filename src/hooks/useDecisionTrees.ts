@@ -2,78 +2,99 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { DecisionTree } from '../types/DecisionTree';
 
-// Mirrors your DB columns
+// ---- DB row type (what the table actually has) ----
+// Supports both the new shape (tree_data) and old shape (nodes/root_node_id).
 type DBDecisionTree = {
   id: string;
   title: string;
   description: string | null;
   icon: string | null;
-  nodes: any[] | null;          // jsonb
-  root_node_id: string | null;  // uuid/text
-  created_at: string;           // timestamptz
+
+  // NEW schema (preferred)
+  tree_data: { nodes: any[]; rootNodeId: string } | null;
+
+  // OLD schema (fallback if you haven't migrated yet)
+  nodes?: any[] | null;
+  root_node_id?: string | null;
+
+  created_at: string;
 };
+
+type TreeData = { nodes: any[]; rootNodeId: string };
 
 export const useDecisionTrees = () => {
   const [trees, setTrees] = useState<DecisionTree[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const mapRow = (row: DBDecisionTree): DecisionTree => ({
-    id: row.id,
-    title: row.title,
-    description: row.description ?? '',
-    icon: row.icon ?? '🌳',
-    nodes: row.nodes ?? [],
-    rootNodeId: row.root_node_id ?? '',
-    createdAt: new Date(row.created_at),
-  });
+  const rowToDecisionTree = (row: DBDecisionTree): DecisionTree => {
+    // Prefer new jsonb "tree_data", fall back to legacy columns if present.
+    const td: TreeData | null =
+      (row.tree_data as TreeData | null) ??
+      (row.nodes
+        ? { nodes: row.nodes ?? [], rootNodeId: row.root_node_id ?? '' }
+        : null);
+
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description ?? '',
+      icon: row.icon ?? '🌳',
+      nodes: td?.nodes ?? [],
+      rootNodeId: td?.rootNodeId ?? '',
+      createdAt: new Date(row.created_at),
+    };
+  };
 
   const fetchTrees = useCallback(async () => {
     setLoading(true);
-
     const { data, error } = await supabase
       .from('decision_trees')
-      .select('*')
+      .select(
+        // include both new and old so we can map either
+        'id, title, description, icon, tree_data, nodes, root_node_id, created_at'
+      )
       .order('created_at', { ascending: false })
-      .returns<DBDecisionTree[]>();        // 👈 type the result here
+      .returns<DBDecisionTree[]>();
 
     if (error) {
-      console.error('Error fetching trees:', error);
+      console.error('Error fetching trees:', error.message, error.details, error.hint);
       setTrees([]);
     } else {
-      setTrees((data ?? []).map(mapRow));
+      setTrees((data ?? []).map(rowToDecisionTree));
     }
     setLoading(false);
   }, []);
 
   const createTree = useCallback(
     async (tree: Omit<DecisionTree, 'id' | 'createdAt'>) => {
-      // Insert shape: no id/created_at
-      const insert: Omit<DBDecisionTree, 'id' | 'created_at'> = {
+      // Always write to tree_data (jsonb) to satisfy NOT NULL
+      const tree_data: TreeData = {
+        nodes: tree.nodes ?? [],
+        rootNodeId: tree.rootNodeId || (tree.nodes?.[0]?.id ?? ''),
+      };
+
+      const insert = {
         title: tree.title,
         description: tree.description ?? '',
         icon: tree.icon ?? '🌳',
-        nodes: tree.nodes ?? [],
-        root_node_id: tree.rootNodeId ?? null,
+        tree_data, // <<< key piece
       };
 
       const { data, error } = await supabase
         .from('decision_trees')
-        .insert(insert)
-        .select('*')
-        .single()                           // single row
-        .then((res: any) => {
-          // Give TS the row type
-          if ('data' in res) (res as any).data as DBDecisionTree;
-          return res as { data: DBDecisionTree | null; error: any };
-        });
+        .insert(insert as any) // keep it simple for TS here
+        .select(
+          'id, title, description, icon, tree_data, nodes, root_node_id, created_at'
+        )
+        .single();
 
       if (error) {
-        console.error('Error creating tree:', error);
+        console.error('Error creating tree:', error.message, error.details, error.hint);
         throw error;
       }
 
-      const newTree = mapRow(data!);
-      setTrees(prev => [newTree, ...prev]);
+      const newTree = rowToDecisionTree(data as DBDecisionTree);
+      setTrees((prev) => [newTree, ...prev]);
       return newTree;
     },
     []
@@ -81,12 +102,21 @@ export const useDecisionTrees = () => {
 
   const updateTree = useCallback(
     async (id: string, updates: Partial<DecisionTree>) => {
-      const patch: Partial<DBDecisionTree> = {};
+      // Build the new tree_data by merging with what's in memory (or fetch if missing)
+      const existing = trees.find((t) => t.id === id);
+      let nextTreeData: TreeData | undefined;
+
+      if (updates.nodes !== undefined || updates.rootNodeId !== undefined) {
+        const baseNodes = updates.nodes ?? existing?.nodes ?? [];
+        const baseRoot = updates.rootNodeId ?? existing?.rootNodeId ?? (baseNodes[0]?.id ?? '');
+        nextTreeData = { nodes: baseNodes, rootNodeId: baseRoot };
+      }
+
+      const patch: Record<string, any> = {};
       if (updates.title !== undefined) patch.title = updates.title;
       if (updates.description !== undefined) patch.description = updates.description;
       if (updates.icon !== undefined) patch.icon = updates.icon;
-      if (updates.nodes !== undefined) patch.nodes = updates.nodes;
-      if (updates.rootNodeId !== undefined) patch.root_node_id = updates.rootNodeId;
+      if (nextTreeData) patch.tree_data = nextTreeData; // <<< write jsonb
 
       if (Object.keys(patch).length === 0) return;
 
@@ -96,29 +126,37 @@ export const useDecisionTrees = () => {
         .eq('id', id);
 
       if (error) {
-        console.error('Error updating tree:', error);
+        console.error('Error updating tree:', error.message, error.details, error.hint);
         throw error;
       }
 
-      setTrees(prev =>
-        prev.map(t => (t.id === id ? { ...t, ...updates } as DecisionTree : t))
+      // Update local state
+      setTrees((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                ...updates,
+                ...(nextTreeData
+                  ? { nodes: nextTreeData.nodes, rootNodeId: nextTreeData.rootNodeId }
+                  : {}),
+              }
+            : t
+        )
       );
     },
-    []
+    [trees]
   );
 
   const deleteTree = useCallback(
     async (id: string) => {
       const before = trees;
-      setTrees(prev => prev.filter(t => t.id !== id)); // optimistic
+      setTrees((prev) => prev.filter((t) => t.id !== id)); // optimistic
 
-      const { error } = await supabase
-        .from('decision_trees')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('decision_trees').delete().eq('id', id);
 
       if (error) {
-        console.error('Error deleting tree:', error);
+        console.error('Error deleting tree:', error.message, error.details, error.hint);
         setTrees(before); // rollback
         throw error;
       }

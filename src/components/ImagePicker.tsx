@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Alert, Pressable } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  Alert,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 interface ImagePickerComponentProps {
@@ -11,24 +20,27 @@ interface ImagePickerComponentProps {
 export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
   imageUrl,
   onImageSelected,
-  placeholder = "Add Image"
+  placeholder = 'Add Image',
 }) => {
   const [uploading, setUploading] = useState(false);
 
+  const displayPlaceholder = useMemo(() => String(placeholder), [placeholder]);
+
   const pickImage = async () => {
     try {
-      console.log('🎯 Starting image picker...');
-      
+      console.log('🎯 ImagePicker: requesting permission…');
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('📱 Permission result:', permissionResult);
-      
+
       if (!permissionResult.granted) {
-        Alert.alert("Permission Required", "We need access to your photos to upload images.");
+        Alert.alert(
+          'Permission Required',
+          'We need access to your photos to upload images.'
+        );
         return;
       }
 
       setUploading(true);
-      console.log('📷 Launching image picker...');
+      console.log('📷 ImagePicker: opening library…');
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -37,39 +49,34 @@ export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
         quality: 0.8,
       });
 
-      console.log('✅ Image picker result:', result);
+      console.log('✅ ImagePicker result:', result);
 
       if (!result.canceled && result.assets?.[0]?.uri) {
-        const imageUri = result.assets[0].uri;
-        console.log('🖼️ Selected image URI:', imageUri);
-        onImageSelected(imageUri);
-        Alert.alert('Success', 'Image selected successfully!');
+        const uri = result.assets[0].uri;
+        console.log('🖼️ Selected image URI:', uri);
+        onImageSelected(uri); // store URI (later you can upload to Supabase Storage)
       } else {
-        console.log('❌ Image selection canceled or failed');
+        console.log('ℹ️ Selection canceled');
       }
-    } catch (error) {
-      console.error('💥 Error in pickImage:', error);
-      Alert.alert('Error', `Failed to pick image: ${error}`);
+    } catch (err) {
+      console.error('💥 pickImage error:', err);
+      Alert.alert('Error', 'Failed to pick image.');
     } finally {
       setUploading(false);
     }
   };
 
   const handlePress = () => {
-    console.log('🔥 ImagePicker PRESSED! This should show in console');
-    Alert.alert('Debug', 'Touch detected! Opening image picker...');
-    pickImage();
+    console.log('🔥 ImagePicker pressed');
+    void pickImage();
   };
 
   console.log('🎨 Rendering ImagePicker with imageUrl:', imageUrl);
 
   return (
     <View style={styles.wrapper}>
-      <Pressable 
-        style={({ pressed }) => [
-          styles.container,
-          pressed && styles.pressed
-        ]}
+      <Pressable
+        style={({ pressed }) => [styles.container, pressed ? styles.pressed : null]}
         onPress={handlePress}
         disabled={uploading}
       >
@@ -77,18 +84,23 @@ export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
           <Image source={{ uri: imageUrl }} style={styles.image} />
         ) : (
           <View style={styles.placeholder}>
-            <Text style={styles.icon}>📷</Text>
-            <Text style={styles.placeholderText}>
-              {uploading ? 'Loading...' : placeholder}
-            </Text>
-            <Text style={styles.tapText}>Tap to select image</Text>
-            <Text style={styles.debugText}>DEBUG: Touch me!</Text>
+            {uploading ? (
+              <>
+                <ActivityIndicator size="small" />
+                <Text style={styles.placeholderText}>Loading…</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.icon}>📷</Text>
+                <Text style={styles.placeholderText}>{displayPlaceholder}</Text>
+                <Text style={styles.tapText}>Tap to select image</Text>
+              </>
+            )}
           </View>
         )}
       </Pressable>
-      
-      {/* Fallback button */}
-      <TouchableOpacity style={styles.fallbackButton} onPress={handlePress}>
+
+      <TouchableOpacity style={styles.fallbackButton} onPress={handlePress} disabled={uploading}>
         <Text style={styles.fallbackText}>
           {imageUrl ? 'Change Image' : 'Select Image'}
         </Text>
@@ -109,6 +121,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minHeight: 180,
     backgroundColor: '#f8f9fa',
+    alignItems: 'stretch',
+    justifyContent: 'center',
   },
   pressed: {
     backgroundColor: '#e6f3ff',
@@ -120,30 +134,24 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   placeholder: {
-    height: 180,
-    justifyContent: 'center',
+    minHeight: 180,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    gap: 6,
   },
   icon: {
     fontSize: 32,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   placeholderText: {
     color: '#007AFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
   },
   tapText: {
     color: '#666',
     fontSize: 14,
-    marginBottom: 4,
-  },
-  debugText: {
-    color: '#ff0000',
-    fontSize: 12,
-    fontWeight: 'bold',
   },
   fallbackButton: {
     marginTop: 8,
@@ -153,7 +161,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fallbackText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
