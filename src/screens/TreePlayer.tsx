@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+} from 'react-native';
 import { DecisionTree, TreeNode, TreeState, Choice, Condition } from '../types/DecisionTree';
 import { supabase } from '../lib/supabase';
 
@@ -8,6 +16,18 @@ interface TreePlayerProps {
   onBack: () => void;
 }
 
+// DB row supports new (tree_data) and old (nodes/root_node_id) schema
+type DBRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  icon: string | null;
+  tree_data?: { nodes: any[]; rootNodeId: string } | null;
+  nodes?: any[] | null;
+  root_node_id?: string | null;
+  created_at: string;
+};
+
 export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
   const [tree, setTree] = useState<DecisionTree | null>(null);
   const [loading, setLoading] = useState(true);
@@ -15,40 +35,51 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     currentNodeId: '',
     history: [],
     variables: {},
-    visitedNodes: new Set<string>()
+    visitedNodes: new Set<string>(),
   });
 
   useEffect(() => {
     const fetchTree = async () => {
       try {
         setLoading(true);
+
         const { data, error } = await supabase
           .from('decision_trees')
-          .select('*')
+          .select('id, title, description, icon, tree_data, nodes, root_node_id, created_at')
           .eq('id', treeId)
-          .single();
+          .single<DBRow>();
 
         if (error) throw error;
+
+        // Prefer tree_data; fall back to legacy columns
+        const td = data.tree_data
+          ? { nodes: data.tree_data.nodes ?? [], rootNodeId: data.tree_data.rootNodeId ?? '' }
+          : { nodes: data.nodes ?? [], rootNodeId: data.root_node_id ?? '' };
 
         const formattedTree: DecisionTree = {
           id: data.id,
           title: data.title,
-          description: data.description || '',
-          icon: data.icon || '🌳',
-          nodes: data.nodes || [],
-          rootNodeId: data.root_node_id || '',
-          createdAt: new Date(data.created_at)
+          description: data.description ?? '',
+          icon: data.icon ?? '🌳',
+          nodes: Array.isArray(td.nodes) ? td.nodes : [],
+          rootNodeId: td.rootNodeId ?? '',
+          createdAt: new Date(data.created_at),
         };
+
+        // pick a valid start node
+        const hasRoot = formattedTree.rootNodeId &&
+          formattedTree.nodes.some(n => n.id === formattedTree.rootNodeId);
+        const startId = hasRoot ? formattedTree.rootNodeId : (formattedTree.nodes[0]?.id ?? '');
 
         setTree(formattedTree);
         setState({
-          currentNodeId: formattedTree.rootNodeId,
+          currentNodeId: startId,
           history: [],
           variables: {},
-          visitedNodes: new Set<string>()
+          visitedNodes: new Set<string>(),
         });
-      } catch (error) {
-        console.error('Error fetching tree:', error);
+      } catch (err) {
+        console.error('Error fetching tree:', err);
       } finally {
         setLoading(false);
       }
@@ -57,6 +88,7 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     fetchTree();
   }, [treeId]);
 
+  // ---------- Early UI states (no hooks after this!) ----------
   if (loading) {
     return (
       <View style={styles.container}>
@@ -66,9 +98,9 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
           </TouchableOpacity>
           <Text style={styles.title}>Loading...</Text>
         </View>
-        <View style={styles.errorContainer}>
+        <View style={styles.center}>
           <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.errorText}>Loading decision tree...</Text>
+          <Text style={styles.empty}>Loading decision tree…</Text>
         </View>
       </View>
     );
@@ -83,95 +115,94 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
           </TouchableOpacity>
           <Text style={styles.title}>Error</Text>
         </View>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Tree not found</Text>
+        <View style={styles.center}>
+          <Text style={styles.empty}>Tree not found</Text>
         </View>
       </View>
     );
   }
 
-  const currentNode = tree.nodes.find(node => node.id === state.currentNodeId);
+  if (!tree.nodes.length) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>{tree.title}</Text>
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.empty}>This tree has no nodes yet.</Text>
+        </View>
+      </View>
+    );
+  }
 
-  // Enhanced condition evaluation function
+  // derive current node WITHOUT hooks (so order never changes)
+  const currentNode: TreeNode | undefined =
+    tree.nodes.find(n => n.id === state.currentNodeId);
+
+  // ---------- Logic helpers ----------
   const evaluateCondition = (condition: Condition): boolean => {
     if (condition.type === 'variable') {
-      const variableValue = state.variables[condition.variable || ''];
+      const key = condition.variable || '';
+      const variableValue = state.variables[key];
+
       switch (condition.operator) {
-        case 'equals':
-          return variableValue === condition.value;
-        case 'not_equals':
-          return variableValue !== condition.value;
-        case 'greater_than':
-          return Number(variableValue) > Number(condition.value);
-        case 'less_than':
-          return Number(variableValue) < Number(condition.value);
+        case 'equals': return variableValue === condition.value;
+        case 'not_equals': return variableValue !== condition.value;
+        case 'greater_than': return Number(variableValue) > Number(condition.value);
+        case 'less_than': return Number(variableValue) < Number(condition.value);
         case 'contains':
-          return variableValue?.includes(condition.value) || false;
-        case 'exists':
-          return variableValue !== undefined && variableValue !== '';
-        case 'not_exists':
-          return variableValue === undefined || variableValue === '';
-        default:
-          return false;
+          return typeof variableValue === 'string'
+            ? variableValue.includes(String(condition.value ?? ''))
+            : false;
+        case 'exists': return variableValue !== undefined && variableValue !== '';
+        case 'not_exists': return variableValue === undefined || variableValue === '';
+        default: return false;
       }
-    } else if (condition.type === 'node_visited') {
-      const wasVisited = state.visitedNodes.has(condition.nodeId || '');
-      switch (condition.operator) {
-        case 'exists':
-          return wasVisited;
-        case 'not_exists':
-          return !wasVisited;
-        default:
-          return wasVisited;
-      }
-    } else if (condition.type === 'previous_choice') {
-      // Check if a specific choice was made in the previous step
-      const lastNodeId = state.history[state.history.length - 1];
-      if (lastNodeId === condition.nodeId) {
-        // For simplicity, we'll track the last choice made
-        // In a more complex implementation, you'd track choice history
-        return true; // This would need more sophisticated tracking
-      }
-      return false;
     }
+
+    if (condition.type === 'node_visited') {
+      const wasVisited = state.visitedNodes.has(condition.nodeId || '');
+      return condition.operator === 'not_exists' ? !wasVisited : wasVisited;
+    }
+
+    if (condition.type === 'previous_choice') {
+      const lastNodeId = state.history[state.history.length - 1];
+      return lastNodeId === condition.nodeId;
+    }
+
     return true;
   };
 
-  const evaluateConditions = (conditions: Condition[]): boolean => {
-    return conditions.length === 0 || conditions.every(evaluateCondition);
-  };
+  const evaluateConditions = (conditions: Condition[] = []): boolean =>
+    conditions.length === 0 || conditions.every(evaluateCondition);
 
-  const getVisibleChoices = () => {
+  const getVisibleChoices = (): Choice[] => {
     if (!currentNode?.choices) return [];
-    return currentNode.choices.filter(choice => 
-      evaluateConditions(choice.conditions || [])
-    );
+    return currentNode.choices.filter(c => evaluateConditions(c.conditions || []));
   };
 
+  // ---------- Handlers ----------
   const handleChoice = (choiceId: string) => {
     if (!currentNode) return;
-    
+
     const choice = currentNode.choices?.find(c => c.id === choiceId);
     if (!choice) return;
 
-    // Update variables if choice sets any
     const newVariables = { ...state.variables };
-    if (choice.setVariable) {
-      newVariables[choice.setVariable.name] = choice.setVariable.value;
-    }
+    if (choice.setVariable) newVariables[choice.setVariable.name] = choice.setVariable.value;
 
-    // Update visited nodes
-    const newVisitedNodes = new Set(state.visitedNodes);
-    newVisitedNodes.add(state.currentNodeId);
+    const newVisited = new Set(state.visitedNodes);
+    if (state.currentNodeId) newVisited.add(state.currentNodeId);
 
-    if (choice.nextNodeId) {
-      setState({
-        currentNodeId: choice.nextNodeId,
-        history: [...state.history, state.currentNodeId],
-        variables: newVariables,
-        visitedNodes: newVisitedNodes
-      });
-    }
+    setState({
+      currentNodeId: choice.nextNodeId || currentNode.id, // end here if no next
+      history: [...state.history, state.currentNodeId],
+      variables: newVariables,
+      visitedNodes: newVisited,
+    });
   };
 
   const handleBack = () => {
@@ -180,17 +211,19 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
       setState({
         ...state,
         currentNodeId: previousNodeId,
-        history: state.history.slice(0, -1)
+        history: state.history.slice(0, -1),
       });
     }
   };
 
   const handleRestart = () => {
+    const hasRoot = tree.rootNodeId && tree.nodes.some(n => n.id === tree.rootNodeId);
+    const startId = hasRoot ? tree.rootNodeId! : (tree.nodes[0]?.id ?? '');
     setState({
-      currentNodeId: tree.rootNodeId,
+      currentNodeId: startId,
       history: [],
       variables: {},
-      visitedNodes: new Set<string>()
+      visitedNodes: new Set<string>(),
     });
   };
 
@@ -203,13 +236,14 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
           </TouchableOpacity>
           <Text style={styles.title}>{tree.title}</Text>
         </View>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Node not found</Text>
+        <View style={styles.center}>
+          <Text style={styles.empty}>Node not found</Text>
         </View>
       </View>
     );
   }
 
+  // ---------- Render ----------
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -224,31 +258,21 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
 
       <View style={styles.content}>
         <View style={styles.progressBar}>
-          <Text style={styles.progressText}>
-            Step {state.history.length + 1}
-          </Text>
+          <Text style={styles.progressText}>Step {state.history.length + 1}</Text>
         </View>
 
         <View style={styles.nodeCard}>
-          {currentNode.imageUrl && (
+          {currentNode.imageUrl ? (
             <Image source={{ uri: currentNode.imageUrl }} style={styles.nodeImage} />
-          )}
-          
-          <Text style={styles.nodeTitle}>{currentNode.title}</Text>
-          
-          {currentNode.description && (
-            <Text style={styles.nodeDescription}>{currentNode.description}</Text>
-          )}
-          {/* Debug info - HIDDEN
-          <View style={styles.debugInfo}>
-            <Text style={styles.debugText}>Node Type: {currentNode.type}</Text>
-            <Text style={styles.debugText}>Has Choices: {currentNode.choices ? 'Yes' : 'No'}</Text>
-            <Text style={styles.debugText}>Choices Count: {currentNode.choices?.length || 0}</Text>
-            <Text style={styles.debugText}>Visible Choices: {getVisibleChoices().length}</Text>
-          </View>
-          */}
+          ) : null}
 
-          {(currentNode.type === 'dropdown' && currentNode.choices) && (
+          <Text style={styles.nodeTitle}>{currentNode.title}</Text>
+
+          {currentNode.description ? (
+            <Text style={styles.nodeDescription}>{currentNode.description}</Text>
+          ) : null}
+
+          {currentNode.type === 'dropdown' && currentNode.choices ? (
             <View style={styles.choicesContainer}>
               {getVisibleChoices().map(choice => (
                 <TouchableOpacity
@@ -260,32 +284,30 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
                 </TouchableOpacity>
               ))}
             </View>
-          )}
-          {currentNode.isEnd && (
+          ) : null}
+
+          {currentNode.isEnd ? (
             <View style={styles.endContainer}>
               <Text style={styles.endText}>🎉 Complete!</Text>
               <TouchableOpacity style={styles.restartButton} onPress={handleRestart}>
                 <Text style={styles.restartText}>Start Over</Text>
               </TouchableOpacity>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {state.history.length > 0 && (
+        {state.history.length > 0 ? (
           <TouchableOpacity style={styles.backStepButton} onPress={handleBack}>
             <Text style={styles.backStepText}>← Previous Step</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -295,127 +317,25 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  backButton: {
-    padding: 8,
-  },
-  backText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    flex: 1,
-    textAlign: 'center',
-  },
-  restartButton: {
-    backgroundColor: '#FF9500',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-  },
-  restartText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  content: {
-    padding: 20,
-  },
-  progressBar: {
-    backgroundColor: '#007AFF',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  progressText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  nodeCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-  },
-  nodeImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginBottom: 15,
-    resizeMode: 'cover',
-  },
-  nodeTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  nodeDescription: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 22,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  choicesContainer: {
-    gap: 10,
-  },
-  choiceButton: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  choiceText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  endContainer: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  endText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#28a745',
-    marginBottom: 15,
-  },
-  backStepButton: {
-    backgroundColor: '#6c757d',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  backStepText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 18,
-    color: '#666',
-    textAlign: 'center',
-  },
-  debugInfo: {
-    backgroundColor: '#f0f0f0',
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 15,
-  },
-  debugText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
+  backButton: { padding: 8 },
+  backText: { fontSize: 16, color: '#007AFF' },
+  title: { fontSize: 20, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  restartButton: { backgroundColor: '#FF9500', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 },
+  restartText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  content: { padding: 20 },
+  progressBar: { backgroundColor: '#007AFF', padding: 10, borderRadius: 8, marginBottom: 20, alignItems: 'center' },
+  progressText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  nodeCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, marginBottom: 20 },
+  nodeImage: { width: '100%', height: 200, borderRadius: 8, marginBottom: 15, resizeMode: 'cover' },
+  nodeTitle: { fontSize: 24, fontWeight: 'bold', color: '#333', marginBottom: 10, textAlign: 'center' },
+  nodeDescription: { fontSize: 16, color: '#666', lineHeight: 22, marginBottom: 20, textAlign: 'center' },
+  choicesContainer: { gap: 10 },
+  choiceButton: { backgroundColor: '#007AFF', padding: 15, borderRadius: 8, alignItems: 'center' },
+  choiceText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  endContainer: { alignItems: 'center', padding: 20 },
+  endText: { fontSize: 24, fontWeight: 'bold', color: '#28a745', marginBottom: 15 },
+  backStepButton: { backgroundColor: '#6c757d', padding: 12, borderRadius: 8, alignItems: 'center' },
+  backStepText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  empty: { fontSize: 16, color: '#666', textAlign: 'center', marginTop: 12 },
 });

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, Modal, Platform, Pressable, StyleSheet as RNStyleSheet } from 'react-native';
 import { DecisionTree } from '../types/DecisionTree';
+
 
 interface TreeCardProps {
   title: string;
@@ -14,14 +15,22 @@ interface TreeCardProps {
 const TreeCard: React.FC<TreeCardProps> = ({ title, icon, onPress, onEdit, onDelete }) => {
   const [showMenu, setShowMenu] = useState(false);
 
-  const handleDelete = () => {
+  const confirmDelete = () => {
     setShowMenu(false);
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete "${title}"? This cannot be undone.`)) {
+        onDelete();
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete Tree',
       `Are you sure you want to delete "${title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: onDelete }
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
       ]
     );
   };
@@ -32,41 +41,39 @@ const TreeCard: React.FC<TreeCardProps> = ({ title, icon, onPress, onEdit, onDel
   };
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.9}>
       {icon && (icon.includes('http') || icon.includes('/')) ? (
         <Image source={{ uri: icon }} style={styles.iconImage} />
       ) : (
         <Text style={styles.icon}>{icon}</Text>
       )}
       <Text style={styles.title}>{title}</Text>
-      
-      <TouchableOpacity 
-        style={styles.menuButton}
-        onPress={() => setShowMenu(true)}
-      >
+
+      <TouchableOpacity style={styles.menuButton} onPress={() => setShowMenu(true)}>
         <Text style={styles.menuDots}>⋯</Text>
       </TouchableOpacity>
 
       <Modal
         visible={showMenu}
-        transparent={true}
+        transparent
         animationType="fade"
         onRequestClose={() => setShowMenu(false)}
       >
-        <TouchableOpacity 
-          style={styles.overlay}
-          onPress={() => setShowMenu(false)}
-        >
+        <View style={styles.overlay}>
+          {/* background click closes */}
+          <Pressable style={RNStyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
+
+          {/* menu box – not wrapped in a touchable that closes */}
           <View style={styles.menu}>
             <TouchableOpacity style={styles.menuItem} onPress={handleEdit}>
               <Text style={styles.menuText}>Edit</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
+            <TouchableOpacity style={styles.menuItem} onPress={confirmDelete}>
               <Text style={[styles.menuText, styles.deleteText]}>Delete</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </View>
+    </Modal>
     </TouchableOpacity>
   );
 };
@@ -124,7 +131,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     padding: 8,
-    minWidth: 120,
+    minWidth: 140,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,

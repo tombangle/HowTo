@@ -151,14 +151,24 @@ export const useDecisionTrees = () => {
   const deleteTree = useCallback(
     async (id: string) => {
       const before = trees;
-      setTrees((prev) => prev.filter((t) => t.id !== id)); // optimistic
+      setTrees(prev => prev.filter(t => t.id !== id)); // optimistic
 
-      const { error } = await supabase.from('decision_trees').delete().eq('id', id);
+      try {
+        const { data, error } = await supabase
+          .from('decision_trees')
+          .delete()
+          .eq('id', id)
+          .select('id')   // force return of deleted row
+          .single();      // error if 0 rows
 
-      if (error) {
-        console.error('Error deleting tree:', error.message, error.details, error.hint);
-        setTrees(before); // rollback
-        throw error;
+        if (error || !data?.id) {
+          console.error('Delete failed:', error?.message, error?.details, error?.hint);
+          setTrees(before); // rollback
+          throw error ?? new Error('Delete did not return a row.');
+        }
+      } catch (err: any) {
+        alert(`Could not delete tree: ${err?.message ?? err}`);
+        throw err;
       }
     },
     [trees]
