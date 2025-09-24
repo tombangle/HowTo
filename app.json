@@ -19,7 +19,10 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "HowTo",
+      "shortName": "HowTo",
+      "basePath": "/HowTo"
     },
     "plugins": [
       ["expo-splash-screen", {

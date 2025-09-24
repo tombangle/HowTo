@@ -8,11 +8,15 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "expo export --platform web --output-dir dist",
-    "export:web": "expo export --platform web --output-dir dist",
-    "deploy:web": "bash scripts/deploy-web.sh",
-    "fix:public": "node scripts/fix-public-path.js",
-    "postexport:web": "node scripts/patch-index.js"
+
+    
+    "build:web": "expo export --platform web --output-dir docs",
+
+    
+    "export:web": "npm run build:web",
+
+    
+    "postbuild:web": "node -e \"require('fs').mkdirSync('docs', {recursive:true}); try{require('fs').writeFileSync('docs/.nojekyll','');}catch(e){}\""
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
@@ -37,7 +41,7 @@
     "expo-system-ui": "~5.0.7",
     "expo-web-browser": "~14.1.6",
     "react": "18.3.1",
-    "react-dom": "19.0.0",
+    "react-dom": "18.3.1",
     "react-native": "0.76.6",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-reanimated": "~3.17.4",
@@ -54,7 +58,6 @@
     "@types/react-test-renderer": "18.0.7",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
-    "gh-pages": "^6.3.0",
     "typescript": "5.6.3"
   }
 }
