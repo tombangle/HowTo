@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -22,16 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: "20" }
+        with:
+          node-version: '20'
       - run: npm ci
 
-      # This line makes the failure obvious in the Actions log
       - name: Check envs are present
-        run: node -e "if(!process.env.EXPO_PUBLIC_SUPABASE_URL||!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY){console.error('❌ Missing EXPO_PUBLIC_* envs');process.exit(1)};console.log('✅ Env OK')"
+        run: >
+          node -e "if(!process.env.EXPO_PUBLIC_SUPABASE_URL||!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY){
+          console.error('❌ Missing EXPO_PUBLIC_* envs'); process.exit(1) } else { console.log('✅ Env OK') }"
 
       - run: npx expo export --platform web --output-dir docs
       - uses: actions/upload-pages-artifact@v3
-        with: { path: docs }
+        with:
+          path: docs
 
   deploy:
     needs: build
