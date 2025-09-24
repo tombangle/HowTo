@@ -4,11 +4,11 @@ const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!url || !key) {
-  // This will print on GitHub Pages if secrets weren't injected at build time
-  console.error("❌ Supabase envs missing in bundle", {
-    url_set: !!url,
-    key_len: key?.length ?? 0,
-  });
+  throw new Error(
+    `❌ Missing Supabase envs in bundle.
+     url_set=${!!url}, key_len=${key?.length ?? 0}.
+     Make sure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in GitHub repo secrets.`
+  );
 }
 
-export const supabase = createClient(url ?? "", key ?? "");
+export const supabase = createClient(url, key);
