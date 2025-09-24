@@ -9,14 +9,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
 
-    
     "build:web": "expo export --platform web --output-dir docs",
-
-    
     "export:web": "npm run build:web",
 
-    
-    "postbuild:web": "node -e \"require('fs').mkdirSync('docs', {recursive:true}); try{require('fs').writeFileSync('docs/.nojekyll','');}catch(e){}\""
+    "postbuild:web": "node scripts/patch-index.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
