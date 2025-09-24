@@ -22,8 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        with: { node-version: '20' }
       - run: npm ci
 
       - name: Check envs are present
@@ -32,9 +31,10 @@ jobs:
           console.error('❌ Missing EXPO_PUBLIC_* envs'); process.exit(1) } else { console.log('✅ Env OK') }"
 
       - run: npx expo export --platform web --output-dir docs
+      - run: node scripts/patch-index.js                 # <-- add this line
+
       - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
+        with: { path: docs }
 
   deploy:
     needs: build
