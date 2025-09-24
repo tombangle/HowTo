@@ -49,3 +49,11 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#3e1fef' }
 });
+
+console.log(
+  "ENV check:",
+  {
+    url_set: !!process.env.EXPO_PUBLIC_SUPABASE_URL,
+    key_len: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.length || 0
+  }
+);
