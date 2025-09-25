@@ -49,14 +49,25 @@ export const NodeEditor: React.FC<NodeEditorProps> = ({ node, allNodes = [], onS
   const handleSave = () => {
     if (!title.trim()) return;
 
+    const cleanedChoices =
+      (choices || [])
+        .filter(c => c.label.trim())
+        .map(c => ({
+          ...c,
+          nextNodeId: c.nextNodeId ? c.nextNodeId : undefined, // no ''
+        }));
+
+    // End if: checkbox on, OR type=image, OR a dropdown with no choices
+    const end = isEnd || type === 'image' || (type === 'dropdown' && cleanedChoices.length === 0);
+
     const newNode: TreeNode = {
       id: node?.id || Date.now().toString(),
-      type,
+      type, // "image" | "dropdown"
       title: title.trim(),
       description: description.trim(),
       imageUrl: imageUrl || undefined,
-      choices: type === 'dropdown' ? choices.filter(c => c.label.trim()) : undefined,
-      isEnd: isEnd || (type === 'dropdown' && choices.length === 0),
+      isEnd: end,
+      choices: end ? [] : cleanedChoices,
     };
 
     onSave(newNode);
@@ -181,7 +192,7 @@ export const NodeEditor: React.FC<NodeEditorProps> = ({ node, allNodes = [], onS
               <View style={styles.nodeSelector}>
                 <TouchableOpacity
                   style={[styles.nodeSelectorButton, !choice.nextNodeId && styles.activeNodeSelector]}
-                  onPress={() => updateChoice(index, { nextNodeId: '' })}
+                  onPress={() => updateChoice(index, { nextNodeId: undefined })}
                 >
                   <Text style={[styles.nodeSelectorText, !choice.nextNodeId && styles.activeNodeSelectorText]}>
                     End Here
