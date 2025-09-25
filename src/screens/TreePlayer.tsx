@@ -22,11 +22,22 @@ type DBRow = {
   title: string;
   description: string | null;
   icon: string | null;
-  tree_data?: { nodes: any[]; rootNodeId: string } | null;
+  tree_data?: { nodes?: any[]; rootNodeId?: string } | null;
   nodes?: any[] | null;
   root_node_id?: string | null;
   created_at: string;
 };
+
+// ---- helpers for terminal/end handling ----
+const END_NODE_ID = '__END__';
+
+function isTerminal(n?: TreeNode | null): boolean {
+  if (!n) return false;
+  if (n.isEnd) return true;                 // explicit end
+  if (n.type === 'image') return true;      // editor's "End Node"
+  const hasEdge = n.choices?.some(c => !!c.nextNodeId?.trim()) ?? false;
+  return !hasEdge;                          // no edges => end
+}
 
 export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
   const [tree, setTree] = useState<DecisionTree | null>(null);
@@ -51,23 +62,29 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
 
         if (error) throw error;
 
-        // Prefer tree_data; fall back to legacy columns
+        // prefer tree_data, fall back to legacy columns
         const td = data.tree_data
-          ? { nodes: data.tree_data.nodes ?? [], rootNodeId: data.tree_data.rootNodeId ?? '' }
-          : { nodes: data.nodes ?? [], rootNodeId: data.root_node_id ?? '' };
+          ? {
+              nodes: Array.isArray(data.tree_data.nodes) ? data.tree_data.nodes : [],
+              rootNodeId: data.tree_data.rootNodeId ?? '',
+            }
+          : {
+              nodes: Array.isArray(data.nodes) ? data.nodes : [],
+              rootNodeId: data.root_node_id ?? '',
+            };
 
         const formattedTree: DecisionTree = {
           id: data.id,
           title: data.title,
           description: data.description ?? '',
           icon: data.icon ?? '🌳',
-          nodes: Array.isArray(td.nodes) ? td.nodes : [],
-          rootNodeId: td.rootNodeId ?? '',
+          nodes: td.nodes || [],
+          rootNodeId: td.rootNodeId || '',
           createdAt: new Date(data.created_at),
         };
 
-        // pick a valid start node
-        const hasRoot = formattedTree.rootNodeId &&
+        const hasRoot =
+          !!formattedTree.rootNodeId &&
           formattedTree.nodes.some(n => n.id === formattedTree.rootNodeId);
         const startId = hasRoot ? formattedTree.rootNodeId : (formattedTree.nodes[0]?.id ?? '');
 
@@ -88,7 +105,7 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     fetchTree();
   }, [treeId]);
 
-  // ---------- Early UI states (no hooks after this!) ----------
+  // ---------- Early UI states ----------
   if (loading) {
     return (
       <View style={styles.container}>
@@ -138,9 +155,12 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     );
   }
 
-  // derive current node WITHOUT hooks (so order never changes)
+  // derive current node
   const currentNode: TreeNode | undefined =
     tree.nodes.find(n => n.id === state.currentNodeId);
+
+  const atSyntheticEnd = state.currentNodeId === END_NODE_ID;
+  const finished = atSyntheticEnd || isTerminal(currentNode);
 
   // ---------- Logic helpers ----------
   const evaluateCondition = (condition: Condition): boolean => {
@@ -180,13 +200,14 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     conditions.length === 0 || conditions.every(evaluateCondition);
 
   const getVisibleChoices = (): Choice[] => {
-    if (!currentNode?.choices) return [];
+    if (!currentNode || finished) return [];
+    if (!currentNode.choices) return [];
     return currentNode.choices.filter(c => evaluateConditions(c.conditions || []));
   };
 
   // ---------- Handlers ----------
   const handleChoice = (choiceId: string) => {
-    if (!currentNode) return;
+    if (!currentNode || finished) return;
 
     const choice = currentNode.choices?.find(c => c.id === choiceId);
     if (!choice) return;
@@ -197,8 +218,13 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     const newVisited = new Set(state.visitedNodes);
     if (state.currentNodeId) newVisited.add(state.currentNodeId);
 
+    const nextId =
+      choice.nextNodeId && choice.nextNodeId.trim()
+        ? choice.nextNodeId.trim()
+        : END_NODE_ID; // end here
+
     setState({
-      currentNodeId: choice.nextNodeId || currentNode.id, // end here if no next
+      currentNodeId: nextId,
       history: [...state.history, state.currentNodeId],
       variables: newVariables,
       visitedNodes: newVisited,
@@ -227,7 +253,7 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
     });
   };
 
-  if (!currentNode) {
+  if (!currentNode && !finished) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -262,38 +288,42 @@ export default function TreePlayer({ treeId, onBack }: TreePlayerProps) {
         </View>
 
         <View style={styles.nodeCard}>
-          {currentNode.imageUrl ? (
+          {!!currentNode?.imageUrl && !finished && (
             <Image source={{ uri: currentNode.imageUrl }} style={styles.nodeImage} />
-          ) : null}
+          )}
 
-          <Text style={styles.nodeTitle}>{currentNode.title}</Text>
+          {!finished && (
+            <>
+              <Text style={styles.nodeTitle}>{currentNode?.title}</Text>
 
-          {currentNode.description ? (
-            <Text style={styles.nodeDescription}>{currentNode.description}</Text>
-          ) : null}
+              {!!currentNode?.description && (
+                <Text style={styles.nodeDescription}>{currentNode.description}</Text>
+              )}
 
-          {currentNode.type === 'dropdown' && currentNode.choices ? (
-            <View style={styles.choicesContainer}>
-              {getVisibleChoices().map(choice => (
-                <TouchableOpacity
-                  key={choice.id}
-                  style={styles.choiceButton}
-                  onPress={() => handleChoice(choice.id)}
-                >
-                  <Text style={styles.choiceText}>{choice.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : null}
+              {currentNode?.type === 'dropdown' && currentNode?.choices && (
+                <View style={styles.choicesContainer}>
+                  {getVisibleChoices().map(choice => (
+                    <TouchableOpacity
+                      key={choice.id}
+                      style={styles.choiceButton}
+                      onPress={() => handleChoice(choice.id)}
+                    >
+                      <Text style={styles.choiceText}>{choice.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
 
-          {currentNode.isEnd ? (
+          {finished && (
             <View style={styles.endContainer}>
               <Text style={styles.endText}>🎉 Complete!</Text>
               <TouchableOpacity style={styles.restartButton} onPress={handleRestart}>
                 <Text style={styles.restartText}>Start Over</Text>
               </TouchableOpacity>
             </View>
-          ) : null}
+          )}
         </View>
 
         {state.history.length > 0 ? (
